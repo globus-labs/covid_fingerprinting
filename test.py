@@ -6,7 +6,7 @@ import os
 import glob
 import argparse
 import traceback
-from fingerprint.fp2 import process_files
+from fingerprint.compute_fingerprints import process_files
 
 import parsl
 import pickle

@@ -5,8 +5,10 @@ import pandas as pd
 from pathlib import Path
 import glob, sys
 import argparse
+import pickle
 RDLogger.DisableLog('rdApp.*')
-
+import cProfile, pstats, io
+from pstats import SortKey
 
 def process_files(files, sep, headers):
     for file in files:
@@ -18,37 +20,29 @@ def process_files(files, sep, headers):
         fps = []
         for i, row in smiles.iterrows():
             try:
-                fps += [AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(row['canonical_smile']), 2, nBits=2048).ToBase64()]
+                fps += [AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(row['canonical_smile']), 2, nBits=2048)]
             except:
                 fps += ['None']
         smiles['ECFP4'] = fps
-        smiles.to_csv(str(Path(file).with_suffix(''))+'_fp.csv', index=False)
+        pickle.dump( smiles, open( str(Path(file).with_suffix(''))+'_ecfp4.pkl', "wb" ) )
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(description='Program to process Moyer maps')
-    parser.add_argument('-d', '--debug', help='Debug level', required=False, type=int, choices=[0, 1, 2])
-    parser.add_argument('-P', '--profile', help='Profile code', required=False, default=False, action='store_true')
+    parser = argparse.ArgumentParser(description='Program to generate fingerprints for SMILEs')
     parser.add_argument('-i', '--input', help='Input file', required=True)
+    parser.add_argument('-P', '--profile', help='Profile code', required=False, default=False, action='store_true')
     args = parser.parse_args()
-
-    # Default debug level is 1: set -d 0 for no info at all, -d 2 for verbose info
-    if args.debug != None:
-        global debug
-        debug = args.debug
 
     if args.profile:
         pr = cProfile.Profile()
         pr.enable()
 
     if args.input == 'Enamine':
-        files = glob.glob('SMILEs/Enamine_Real_SMILEs/2019q3-4_Enamine_REAL_01_canonical_only.smi')
-        sep   = '\t'
-        process_files(files, sep, None)
-    elif args.input == 'pubchem':
-        files = ['SMILEs/pubchem_canonical.csv']
-        sep   = ','
-        process_files(files, sep, 'pubchem')
+        #files = glob.glob('SMILEs/Enamine_Real_SMILEs/2019q3-4_Enamine_REAL_01_canonical_only.smi')
+        files = glob.glob('SMILEs/Enamine_Real_SMILEs/*.smi')
+        process_files(files, '\t', None)
+    else:
+        print('Unknown input')
 
     if args.profile:
         pr.disable()
