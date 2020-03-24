@@ -32,7 +32,7 @@ def set_file_logger(filename: str, name: str = 'candle', level: int = logging.DE
     logger.addHandler(handler)
     return logger
 
-def process_files(smile_file, csv_file, log_file, debug=False):
+def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=False):
     import time
     import shutil
     import os
@@ -42,32 +42,41 @@ def process_files(smile_file, csv_file, log_file, debug=False):
     from rdkit.Chem import AllChem
 
     count = 0
+    bad_count = 0
     logger = set_file_logger(log_file, level=logging.DEBUG if debug else logging.INFO)
     logger.info(f"Running fingerprint on {smile_file}")
 
     tmp_csv_file = '/dev/shm/{}'.format(os.path.basename(csv_file))
 
     logger.info(f"Writing output temporarily to {tmp_csv_file}")
+    smiles = []
+    with open(smile_file) as current:
+        current.seek(index_start)
+        smiles = [current.readline() for i in range(batchsize)]
+
+
     with open(tmp_csv_file, 'w') as csv_handle:
-        with open(smile_file) as f:
-            for line in f:
-                clean_line = line.strip()
-                smile, *remainder = line.split()
-                try:
-                    logger.debug(f"Processing smile {smile}")
-                    fprint = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048).ToBase64()
-                except:
-                    logger.exception("Caught exception")
-                    fprint = None
-                print('{}, {}'.format(smile, fprint), file=csv_handle)
-                count += 1
+        for line in smiles:
+            clean_line = line.strip()
+            smile, *remainder = line.split()
+            try:
+                logger.debug(f"Processing smile {smile}")
+                fprint = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048).ToBase64()
+            except:
+                logger.exception("Caught exception")
+                fprint = None
+                bad_count += 1
+            print('{}, {}'.format(smile, fprint), file=csv_handle)
+            count += 1
 
     shutil.move(tmp_csv_file, csv_file)
 
+    logger.info("Bad smile count {}".format(bad_count))
     logger.info("Completed {} smiles from {} in {:8.3f}s".format(count,
                                                                  smile_file,
                                                                  time.time() - start))
     logger.handlers.pop()
+    return csv_file
 
 
 def main(argv):

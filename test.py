@@ -6,10 +6,30 @@ import os
 import glob
 import argparse
 import traceback
-from fingerprint.compute_fingerprints import process_files
+# from fingerprint.compute_fingerprints import process_files
+from fingerprint.fp2 import process_files
 
 import parsl
 import pickle
+
+def generate_batch(filename, start=0, batchsize=10, max_batches=10):
+
+    counter = 0
+    if max_batches == 0:
+        max_batches = 999999999
+
+    x = 'Hello'
+    with open(filename) as current:
+        yield current.tell()
+        counter += 1
+
+        while x and counter < max_batches:
+            counter += 1
+            for i in range(batchsize):
+                x = current.readline()
+
+            yield current.tell()
+        return
 
 
 
@@ -20,10 +40,12 @@ if __name__ == "__main__":
                         help="Print Endpoint version information")
     parser.add_argument("-d", "--debug", action='store_true',
                         help="Enables debug logging")
-    parser.add_argument("-n", "--num_files", default=10000,
-                        help="Number of files to load and run. Default=all, if set to 0 the entire file will be used")
-    parser.add_argument("-s", "--smile_dir", default=".",
-                        help="File path to the smiles csv file")
+    parser.add_argument("-n", "--num_batches", default=0,
+                        help="Number of batches to load and run. Default=8, if set to 0 the entire file will be used")
+    parser.add_argument("-b", "--batch_size", default="4",
+                        help="Size of the batch of smiles to send to each node for processing. Default=4, should be 10K")
+    parser.add_argument("-s", "--smile_glob", default=".",
+                        help="Glob pattern that points to all .smi smile files")
     parser.add_argument("-o", "--outdir", default="outputs",
                         help="Output directory. Default : outputs")
     parser.add_argument("-c", "--config", default="local",
@@ -33,7 +55,6 @@ if __name__ == "__main__":
     #for smile_dir in glob.glob(args.smile_dir):
     #    print(smile_dir)
     #exit(0)
-    print(f"Loading pkl files from {args.smile_dir}")
 
     if args.config == "local":
         from parsl.configs.htex_local import config
@@ -60,55 +81,63 @@ if __name__ == "__main__":
 
     os.makedirs(args.outdir, exist_ok=True)
 
-    all_smile_dirs = glob.glob(args.smile_dir)
+    all_smile_files = glob.glob(args.smile_glob)
     counter = 0
     batch_futures = {}
+    chunksize = int(args.batch_size)
 
-    for smile_dir in all_smile_dirs:
-        print("Processing smile_dir: {} {}/{}".format(smile_dir, counter, len(all_smile_dirs)))
+    for smile_file in all_smile_files:
+        if not smile_file.endswith('smi'):
+            print(f"Ignoring {smile_file} not smile file")
+            continue
+
+        print("Processing smile_file: {} {}/{}".format(smile_file, counter, len(all_smile_files)))
         counter+=1
-        batch_futures[smile_dir] = []
+        batch_futures[smile_file] = []
 
-        outdir = "{}/{}".format(args.outdir, os.path.basename(smile_dir))
+        outdir = "{}/{}".format(args.outdir, os.path.basename(smile_file))
         os.makedirs(outdir, exist_ok=True)
         os.makedirs(outdir + '/logs' , exist_ok=True)
 
-        for smi_file in os.listdir(smile_dir)[:int(args.num_files)]:
-            if not smi_file.endswith('.smi'):
-                continue
-        
-            # print("Trying to launch : ", smi_file)
-            fname = os.path.basename(smi_file)
+        batch_generator = generate_batch(smile_file, start=0,
+                                         batchsize=int(args.batch_size),
+                                         max_batches=int(args.num_batches))
+
+        i = 0
+        for batch_index in batch_generator:        
+            print(f"Trying to launch {smile_file} index {i}-{i+chunksize} index:{batch_index}")
+            fname = os.path.basename(smile_file)
             csv_file = "{}/{}".format(outdir, 
-                                      fname.replace('.smi', '.csv'))
+                                      fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.csv'))
             log_file = "{}/logs/{}".format(outdir, 
-                                           fname.replace('.smi', '.log'))
+                                           fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.log'))
 
             if os.path.exists(csv_file):
                 # Skip compute entirely if output file already exists
                 continue
 
-            smi_file_path = f"{smile_dir}/{smi_file}"
-
             # In this case the application expects a single file, we just give it a list with 
             # a single file
-            x = parsl_runner(smi_file_path,
+            x = parsl_runner(smile_file,
                              csv_file,
                              log_file,
+                             i,
+                             chunksize,
                              debug=False)
-            batch_futures[smile_dir].append(x)
-            """
-        # Waiting for all futures
-        print("Waiting for all futures from {}".format(smile_dir))
+            batch_futures[smile_file].append(x)
+            i += chunksize
 
-        for i in batch_futures[smile_dir]:
+        # Waiting for all futures
+        print("Waiting for all futures from {}".format(smile_file))
+
+        for i in batch_futures[smile_file]:
             try:
                 x = i.result()
-
+                print(x)
             except Exception as e:
                 print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
                 print(f"Chunk {i} failed")
-        print(f"Completed {smile_dir}")    
+        print(f"Completed {smile_file}")    
 
     print("All done!")
 
