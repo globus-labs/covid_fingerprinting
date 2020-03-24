@@ -67,7 +67,7 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
                 fprint = None
                 bad_count += 1
             r = remainder[0] if remainder else ''
-            print('{}, {}, {}'.format(smile, *remainder, fprint), file=csv_handle)
+            print('{}\t{}\t{}'.format(smile, *remainder, fprint), file=csv_handle)
             count += 1
 
     shutil.move(tmp_csv_file, csv_file)
