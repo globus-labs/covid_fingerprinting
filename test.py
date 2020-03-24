@@ -121,7 +121,7 @@ if __name__ == "__main__":
             x = parsl_runner(smile_file,
                              csv_file,
                              log_file,
-                             i,
+                             batch_index,
                              chunksize,
                              debug=False)
             batch_futures[smile_file].append(x)
