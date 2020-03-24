@@ -92,6 +92,14 @@ if __name__ == "__main__":
 
             # In this case the application expects a single file, we just give it a list with 
             # a single file
+            x = process_files(smi_file_path,
+                              '\t',
+                              None,
+                              csv_file,
+                              log_file,
+                              debug=True)
+            print(x)
+            """
             x = parsl_runner(smi_file_path,
                              '\t',
                              None,
@@ -99,7 +107,7 @@ if __name__ == "__main__":
                              log_file)
 
             batch_futures[smile_dir].append(x)
-
+            """
         # Waiting for all futures
         print("Waiting for all futures from {}".format(smile_dir))
 

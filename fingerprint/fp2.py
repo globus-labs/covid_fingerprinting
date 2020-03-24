@@ -1,7 +1,6 @@
 from rdkit.Chem import AllChem
 from rdkit import Chem
 from rdkit import RDLogger
-import pandas as pd
 from pathlib import Path
 import glob, sys
 import argparse
@@ -33,31 +32,38 @@ def set_file_logger(filename: str, name: str = 'candle', level: int = logging.DE
     logger.addHandler(handler)
     return logger
 
-def process_files(smile_file, sep, headers, csv_file, log_file):
+def process_files(smile_file, csv_file, log_file, debug=False):
     import time
+    import shutil
+    import os
     start = time.time()
     import logging
-    import pandas
 
     from rdkit.Chem import AllChem
 
     count = 0
-    logger = set_file_logger(log_file)
+    logger = set_file_logger(log_file, level=logging.DEBUG if debug else logging.INFO)
     logger.info(f"Running fingerprint on {smile_file}")
-    if headers == None:
-        smiles = pd.read_csv(smile_file, sep=sep, header=None)
-        smiles.columns = ['canonical_smile', 'id']
-    else:
-        smiles = pd.read_csv(smile_file, sep=sep)
-    fps = []
-    for i, row in smiles.iterrows():
-        try:
-            fps += [AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(row['canonical_smile']), 2, nBits=2048).ToBase64()]
-        except:
-            fps += ['None']
-    smiles['ECFP4'] = fps
-    count = len(smiles)
-    smiles.to_csv(csv_file, index=False)
+
+    tmp_csv_file = '/dev/shm/{}'.format(os.path.basename(csv_file))
+
+    logger.info(f"Writing output temporarily to {tmp_csv_file}")
+    with open(tmp_csv_file, 'w') as csv_handle:
+        with open(smile_file) as f:
+            for line in f:
+                clean_line = line.strip()
+                smile, *remainder = line.split()
+                try:
+                    logger.debug(f"Processing smile {smile}")
+                    fprint = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048).ToBase64()
+                except:
+                    logger.exception("Caught exception")
+                    fprint = None
+                print('{}, {}'.format(smile, fprint), file=csv_handle)
+                count += 1
+
+    shutil.move(tmp_csv_file, csv_file)
+
     logger.info("Completed {} smiles from {} in {:8.3f}s".format(count,
                                                                  smile_file,
                                                                  time.time() - start))
@@ -98,4 +104,8 @@ def main(argv):
         print(s.getvalue())
 
 if __name__ == '__main__':
-   main(sys.argv[1:])
+    process_files('/projects/candle_aesp/yadu/covid_fingerprinting/2019q3-4_Enamine_REAL_01.smi', 
+                  '/projects/candle_aesp/yadu/covid_fingerprinting/test.csv', 
+                  '/projects/candle_aesp/yadu/covid_fingerprinting/test.log', 
+                  debug=True)
+    #main(sys.argv[1:])
