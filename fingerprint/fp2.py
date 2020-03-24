@@ -44,14 +44,14 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
     count = 0
     bad_count = 0
     logger = set_file_logger(log_file, level=logging.DEBUG if debug else logging.INFO)
-    logger.info(f"Running fingerprint on {smile_file}")
+    logger.info(f"Running fingerprint on {smile_file} from index_start:{index_start}")
 
     tmp_csv_file = '/dev/shm/{}'.format(os.path.basename(csv_file))
 
     logger.info(f"Writing output temporarily to {tmp_csv_file}")
     smiles = []
-    with open(smile_file) as current:
-        current.seek(index_start)
+    with open(smile_file) as current:        
+        current.seek(index_start)            
         smiles = [current.readline() for i in range(batchsize)]
 
 
@@ -66,7 +66,8 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
                 logger.exception("Caught exception")
                 fprint = None
                 bad_count += 1
-            print('{}, {}'.format(smile, fprint), file=csv_handle)
+            r = remainder[0] if remainder else ''
+            print('{}, {}, {}'.format(smile, *remainder, fprint), file=csv_handle)
             count += 1
 
     shutil.move(tmp_csv_file, csv_file)
@@ -113,8 +114,10 @@ def main(argv):
         print(s.getvalue())
 
 if __name__ == '__main__':
-    process_files('/projects/candle_aesp/yadu/covid_fingerprinting/2019q3-4_Enamine_REAL_01.smi', 
+    process_files('/projects/CVD_Research/foster/SMILEs/Enamine_Real_SMILEs/2019q3-4_Enamine_REAL_16_canonical_only.smi', 
                   '/projects/candle_aesp/yadu/covid_fingerprinting/test.csv', 
                   '/projects/candle_aesp/yadu/covid_fingerprinting/test.log', 
+                  251,
+                  5,
                   debug=True)
     #main(sys.argv[1:])
