@@ -128,7 +128,7 @@ smilesAll =\
         'O=C(N[C@H](C(C(NCC1=CC=CC=C1)=O)=O)C[C@@H]2CCNC2=O)[C@H](CC3=CC=CC=C3)NC(C4=CN(C=C(Br)C=C5)C5=N4)=O'
     ]
 
-def plot_figure(label, target, results, N):
+def plot_figure(label, target, results, N, count):
     plt.rcParams["figure.figsize"] = (8,6)
     plt.figure()
     plt.title('Top %d matches in %s for\n%s'%(N, label, target), fontsize=8)
@@ -136,26 +136,28 @@ def plot_figure(label, target, results, N):
     scores_only = [x[1] for x in results]
     plt.step(np.arange(len(scores_only)), np.array(scores_only), linewidth=1)
     alphas = ''.join(c for c in target if c.isalpha() or c.isdigit() or c=='=' or c=='@')
-    figure_name = 'fig_%s__%s__%03d.pdf'%(label, alphas[0:30], random.randint(1,100))
+    figure_name = 'fig_%s__%s__%d.pdf'%(label, alphas[0:30], count)) # random.randint(1,100))
     print('  creating %s'%figure_name)
     plt.savefig(figure_name)
     plt.close()
 
 
 def process_targets_on_files(label, files, smiles, N, figures):
+    num_smiles = len(smiles)
     if files == []:
         print('No files for',label)
         exit(1)
     with open(label+'_output.csv', 'w') as csvfile:
         result_writer = csv.writer(csvfile, delimiter=' ')
+        count = 0
         for target in smiles:
-            print('Processing %s : %s'%(label, target))
+            print('%s (%d of %d) : %s'%(label, count, num_smiles, target))
             results = process_one_target(files, target, N)
             if results == None:
                 print('  Bad target')
             else:
                 if figures:
-                    plot_figure(label, target, results, N)
+                    plot_figure(label, target, results, N, count)
                 # Put higher results first in output file
                 results.reverse()
                 # Note that we don't record, or write, the file from which the match came
@@ -164,6 +166,7 @@ def process_targets_on_files(label, files, smiles, N, figures):
                     print('    %0.6f : %s'%(results[i][1], results[i][0]))
                 for (match, score) in results:
                     result_writer.writerow([label, '%.6f'%score, target, match])
+            count += 1
 
 def main(argv):
     parser = argparse.ArgumentParser(description='Program to process Moyer maps')

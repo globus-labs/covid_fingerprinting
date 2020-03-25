@@ -5,6 +5,7 @@ from pathlib import Path
 import glob, sys
 import argparse
 RDLogger.DisableLog('rdApp.*')
+import pickle
 
 import logging
 
@@ -32,7 +33,7 @@ def set_file_logger(filename: str, name: str = 'candle', level: int = logging.DE
     logger.addHandler(handler)
     return logger
 
-def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=False):
+def process_files(smile_file, out_file, log_file, index_start, batchsize, debug=False, pickle_out):
     import time
     import shutil
     import os
@@ -46,19 +47,20 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
     logger = set_file_logger(log_file, level=logging.DEBUG if debug else logging.INFO)
     logger.info(f"Running fingerprint on {smile_file} from index_start:{index_start}")
 
-    tmp_csv_file = '/dev/shm/{}'.format(os.path.basename(csv_file))
+    tmp_out_file = '/dev/shm/{}'.format(os.path.basename(out_file))
 
-    logger.info(f"Writing output temporarily to {tmp_csv_file}")
+    logger.info(f"Writing output temporarily to {tmp_out_file}")
     smiles = []
     with open(smile_file) as current:        
         current.seek(index_start)            
         smiles = [current.readline() for i in range(batchsize)]
 
-
-    with open(tmp_csv_file, 'w') as csv_handle:
+    with open(tmp_out_file, 'w') as out_handle:
+        if pickle_out:
+            outputs = []
         for line in smiles:
-            clean_line = line.strip()
             smile, *remainder = line.split()
+            print('XXXX', line, smile, remainder)
             try:
                 logger.debug(f"Processing smile {smile}")
                 fprint = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048).ToBase64()
@@ -67,17 +69,22 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
                 fprint = None
                 bad_count += 1
             id = remainder[0] if remainder else ''
-            print('{},{},{}'.format(smile, id, fprint), file=csv_handle)
+            if pickle_out:
+                outputs += [(smile, id, fprint)]
+            else:
+                print('{},{},{}'.format(smile, id, fprint), file=out_handle)
             count += 1
 
-    shutil.move(tmp_csv_file, csv_file)
+    if pickle_out:
+        pickle.dump( outputs, tmp_out_file )
+    shutil.move(tmp_out_file, out_file)
 
     logger.info("Bad smile count {}".format(bad_count))
     logger.info("Completed {} smiles from {} in {:8.3f}s".format(count,
                                                                  smile_file,
                                                                  time.time() - start))
     logger.handlers.pop()
-    return csv_file
+    return out_file
 
 
 def main(argv):

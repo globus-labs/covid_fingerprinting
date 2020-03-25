@@ -50,6 +50,8 @@ if __name__ == "__main__":
                         help="Output directory. Default : outputs")
     parser.add_argument("-c", "--config", default="local",
                         help="Parsl config defining the target compute resource to use. Default: local")
+    parser.add_argument("-p", "--pickle", action='store_true', default=False, 
+                        help="Output data in pickled format. Default: False")
     args = parser.parse_args()
 
     #for smile_dir in glob.glob(args.smile_dir):
@@ -107,23 +109,28 @@ if __name__ == "__main__":
         for batch_index in batch_generator:        
             print(f"Trying to launch {smile_file} index {i}-{i+chunksize} index:{batch_index}")
             fname = os.path.basename(smile_file)
-            csv_file = "{}/{}".format(outdir, 
-                                      fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.csv'))
+            if args.pickle:
+                out_file = "{}/{}".format(outdir, 
+                                          fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.pkl'))
+            else:
+                out_file = "{}/{}".format(outdir, 
+                                          fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.pkl'))
             log_file = "{}/logs/{}".format(outdir, 
                                            fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.log'))
 
-            if os.path.exists(csv_file):
+            if os.path.exists(out_file):
                 # Skip compute entirely if output file already exists
                 continue
 
             # In this case the application expects a single file, we just give it a list with 
             # a single file
             x = parsl_runner(smile_file,
-                             csv_file,
+                             out_file,
                              log_file,
                              batch_index,
                              chunksize,
-                             debug=False)
+                             debug=False,
+                             args.pickle)
             batch_futures[smile_file].append(x)
             i += chunksize
 
