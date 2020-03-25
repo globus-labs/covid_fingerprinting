@@ -66,8 +66,8 @@ def process_files(smile_file, csv_file, log_file, index_start, batchsize, debug=
                 logger.exception("Caught exception")
                 fprint = None
                 bad_count += 1
-            r = remainder[0] if remainder else ''
-            print('{}\t{}\t{}'.format(smile, *remainder, fprint), file=csv_handle)
+            id = remainder[0] if remainder else ''
+            print('{},{},{}'.format(smile, id, fprint), file=csv_handle)
             count += 1
 
     shutil.move(tmp_csv_file, csv_file)
