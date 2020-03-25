@@ -33,7 +33,7 @@ def set_file_logger(filename: str, name: str = 'candle', level: int = logging.DE
     logger.addHandler(handler)
     return logger
 
-def process_files(smile_file, out_file, log_file, index_start, batchsize, debug=False, pickle_out):
+def process_files(smile_file, out_file, log_file, index_start, batchsize, pickle_out, debug=False):
     import time
     import shutil
     import os
@@ -76,7 +76,8 @@ def process_files(smile_file, out_file, log_file, index_start, batchsize, debug=
             count += 1
 
     if pickle_out:
-        pickle.dump( outputs, tmp_out_file )
+        with open(tmp_out_file, 'wb') as f:
+            pickle.dump(outputs, f)
     shutil.move(tmp_out_file, out_file)
 
     logger.info("Bad smile count {}".format(bad_count))
