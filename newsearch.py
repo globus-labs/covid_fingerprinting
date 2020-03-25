@@ -75,27 +75,30 @@ def process_one_target(files, target, N):
         return None
     best_so_far = [('', 0.0) for index in range(N)] 
     for file in files:
-        with open(file, newline='') as f:
-            reader = csv.reader(f)
-            read = [(sm, fp) for [sm, id, fp] in reader]
-            fingerprint_set = []
-            for sm, fp in read:
-                try:
-                    bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
-                except:
-                    if debug > 0:
-                        print('    fingerprint fail:', sm)
-                    bv = None
-                fingerprint_set += [(sm, bv)]
-            #fingerprint_set = [(sm, DataStructs.ExplicitBitVect(base64.b64decode(fp))) for [sm, id, fp] in reader]
-            new_list        = search_fingerprint_set(fingerprint_set, bit_target, N)
-            if debug > 1:
-                print('Merge:')
-                print('  Pre:\n%s'%print_list(best_so_far))
-                print('  New:\n%s'%print_list(new_list))
-            best_so_far     = merge_lists(best_so_far, new_list, N)
-            if debug > 1:
-                print('  Now:\n%s'%print_list(best_so_far))
+        if file.endswith('pkl'):
+            read = pickle.load( open(file, 'rb') )
+        else:
+            with open(file, 'r') as f:
+                reader = csv.reader(f)
+                read = list(map(tuple, reader))
+        fingerprint_set = []
+        for sm, _, fp in read:
+            # Next TRY here as some do not convert
+            try:
+                bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
+            except:
+                if debug > 0:
+                    print('    fingerprint fail:', sm)
+                bv = None
+            fingerprint_set += [(sm, bv)]
+        new_list = search_fingerprint_set(fingerprint_set, bit_target, N)
+        if debug > 1:
+            print('Merge:')
+            print('  Pre:\n%s'%print_list(best_so_far))
+            print('  New:\n%s'%print_list(new_list))
+        best_so_far = merge_lists(best_so_far, new_list, N)
+        if debug > 1:
+            print('  Now:\n%s'%print_list(best_so_far))
     return(best_so_far)
 
 
@@ -142,7 +145,7 @@ def plot_figure(label, target, results, N, count):
     plt.close()
 
 
-def process_targets_on_files(label, files, smiles, N, figures):
+def process_targets_on_files(label, files, smiles, top, N, figures):
     num_smiles = len(smiles)
     if files == []:
         print('No files for',label)
@@ -161,18 +164,19 @@ def process_targets_on_files(label, files, smiles, N, figures):
                 # Put higher results first in output file
                 results.reverse()
                 # Note that we don't record, or write, the file from which the match came
-                print('  top 10:')
-                for i in range(10):
+                print('  top %d'%min(top,N))
+                for i in range(min(top,N)):
                     print('    %0.6f : %s'%(results[i][1], results[i][0]))
                 for (match, score) in results:
                     result_writer.writerow([label, '%.6f'%score, target, match])
             count += 1
 
 def main(argv):
-    parser = argparse.ArgumentParser(description='Program to process Moyer maps')
+    parser = argparse.ArgumentParser(description='Program to search for matching fingerprints')
     parser.add_argument('-d', '--debug', help='Debug level', required=False, type=int, choices=[0, 1, 2])
     parser.add_argument('-P', '--profile', help='Profile code', required=False, default=False, action='store_true')
     parser.add_argument('-n', '--number', help='Number of candidates to select', required=False, type=int, default=1000)
+    parser.add_argument('-t', '--top', help='Number of candidates to print out', required=False, type=int, default=10)
     parser.add_argument('-f', '--figures', help='Whether to create figures', required=False, default=False, action='store_true')
     #parser.add_argument('-i', '--input', help='Input file', required=True)
     args = parser.parse_args()
@@ -198,13 +202,14 @@ def main(argv):
     zinc_15_files  = glob.glob('outputs/zinc15_unique_smile_name*/*.csv')
     zinc_15_smiles = smilesAll
 
-    #label  = 'test'
-    #files  = ['f1.csv', 'f2.csv', 'f3.csv']
-    #smiles = smilesAll
+    test_label  = 'test'
+    test_files  = ['f1.csv', 'f2.csv', 'f3.csv']
+    test_smiles = smilesAll
 
-    process_targets_on_files(pubchem_label, pubchem_files, pubchem_smiles, args.number, args.figures)
-    #process_targets_on_files(enamine_label, enamine_files, enamine_smiles, args.number, args.figures)
-    #process_targets_on_files(zinc_15_label, zinc_15_files, zinc_15_smiles, args.number, args.figures)
+    process_targets_on_files(test_label, test_files, test_smiles, args.top, args.number, args.figures)
+    #process_targets_on_files(pubchem_label, pubchem_files, pubchem_smiles, args.top, args.number, args.figures)
+    #process_targets_on_files(enamine_label, enamine_files, enamine_smiles, args.top, args.number, args.figures)
+    #process_targets_on_files(zinc_15_label, zinc_15_files, zinc_15_smiles, args.top, args.number, args.figures)
 
     if args.profile:
         pr.disable()
