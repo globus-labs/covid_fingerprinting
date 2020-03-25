@@ -39,6 +39,7 @@ def process_files(smile_file, out_file, log_file, index_start, batchsize, pickle
     import os
     start = time.time()
     import logging
+    import pickle
 
     from rdkit.Chem import AllChem
 
@@ -60,7 +61,6 @@ def process_files(smile_file, out_file, log_file, index_start, batchsize, pickle
             outputs = []
         for line in smiles:
             smile, *remainder = line.split()
-            print('XXXX', line, smile, remainder)
             try:
                 logger.debug(f"Processing smile {smile}")
                 fprint = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048).ToBase64()
