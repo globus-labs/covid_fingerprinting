@@ -108,7 +108,7 @@ if __name__ == "__main__":
             print(f"Trying to launch {smile_file} index {i}-{i+chunksize} index:{batch_index}")
             fname = os.path.basename(smile_file)
             csv_file = "{}/{}".format(outdir, 
-                                      fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.tsv'))
+                                      fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.csv'))
             log_file = "{}/logs/{}".format(outdir, 
                                            fname.replace('.smi', f'.chunk-{i}-{i+chunksize}.log'))
 
