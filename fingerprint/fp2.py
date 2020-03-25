@@ -33,7 +33,7 @@ def set_file_logger(filename: str, name: str = 'candle', level: int = logging.DE
     logger.addHandler(handler)
     return logger
 
-def process_files(smile_file, out_file, log_file, index_start, batchsize, debug=False, pickle_out):
+def process_files(smile_file, out_file, log_file, index_start, batchsize, pickle_out, debug=False):
     import time
     import shutil
     import os

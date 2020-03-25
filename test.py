@@ -129,8 +129,8 @@ if __name__ == "__main__":
                              log_file,
                              batch_index,
                              chunksize,
-                             debug=False,
-                             args.pickle)
+                             args.pickle,
+                             debug=False)
             batch_futures[smile_file].append(x)
             i += chunksize
 
