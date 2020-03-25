@@ -136,7 +136,7 @@ def plot_figure(label, target, results, N, count):
     scores_only = [x[1] for x in results]
     plt.step(np.arange(len(scores_only)), np.array(scores_only), linewidth=1)
     alphas = ''.join(c for c in target if c.isalpha() or c.isdigit() or c=='=' or c=='@')
-    figure_name = 'fig_%s__%s__%d.pdf'%(label, alphas[0:30], count)) # random.randint(1,100))
+    figure_name = 'fig_%s__%s__%d.pdf'%(label, alphas[0:30], count) # random.randint(1,100))
     print('  creating %s'%figure_name)
     plt.savefig(figure_name)
     plt.close()
