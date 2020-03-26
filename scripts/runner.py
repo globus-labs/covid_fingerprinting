@@ -179,13 +179,16 @@ if __name__ == "__main__":
     logger.info("Waiting for all futures from {}".format(pickle_file))
 
     all_results = {smile: [] for smile in targets}
+    count = 0
     for pkl_file in batch_futures:
         i = batch_futures[pkl_file]
+        logger.debug("Waiting on {}/{} of futures".format(count, len(batch_futures)))
+        count+=1
         try:
             x = i.result()
             for smile in x:
                 all_results[smile].extend(x[smile])
-            logger.debug(f"Results from {smile} : {x}")
+            logger.debug(f"Results from {pkl_file} : {x}")
         except Exception as e:
             logger.exception(f"Computing on {pkl_file} failed")
             print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
