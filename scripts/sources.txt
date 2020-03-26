@@ -1,0 +1,4 @@
+GDB13= ["/projects/CVD_Research/datasets/Fingerprints-64/GDB-13-64/GDB-13-smile_50M_{:02d}_canonical.smi/.format(i) for i in range (0,20)]
+Enamine64 = ["/projects/CVD_Research/datasets/Fingerprints-64/Enamine-64/2019q3-4_Enamine_REAL_{:02d}_canonical_only.smi/.format(i) for i in range (1,21)]
+pubchem = ["/projects/CVD_Research/datasets/Fingerprints-64/pubchem/"]
+surechembl = ["/projects/CVD_Research/datasets/Fingerprints-64/SureChEMBL-64/SureChEMBL_all_sorted_canonical.smi/"]
