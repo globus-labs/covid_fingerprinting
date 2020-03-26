@@ -10,8 +10,36 @@ import parsl
 import pickle
 from rdkit import Chem
 from rdkit.Chem import AllChem
-
+from operator import itemgetter
 from targets import target_smiles
+import logging
+
+def set_file_logger(filename: str, name: str = 'runner', level: int = logging.DEBUG, format_string = None):
+    """Add a stream log handler.
+
+    Args:
+        - filename (string): Name of the file to write logs to
+        - name (string): Logger name
+        - level (logging.LEVEL): Set the logging level.
+        - format_string (string): Set the format string
+
+    Returns:
+       -  None
+    """
+    if format_string is None:
+        format_string = "%(asctime)s.%(msecs)03d %(name)s:%(lineno)d [%(levelname)s]  %(message)s"
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler(filename)
+    handler.setLevel(level)
+    formatter = logging.Formatter(format_string, datefmt='%Y-%m-%d %H:%M:%S')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+
+
 
 @parsl.python_app
 def process_one_target(file, targets, N):
@@ -72,10 +100,14 @@ if __name__ == "__main__":
                         help="Enables debug logging")
     parser.add_argument("-s", "--smile_glob", default=".",
                         help="Glob pattern that points to all .smi smile files")
+    parser.add_argument("-t", "--top_n", default="100",
+                        help="Top N items to report, default  = 100")
     parser.add_argument("-o", "--outdir", default="outputs",
                         help="Output directory. Default : outputs")
     parser.add_argument("-c", "--config", default="local",
                         help="Parsl config defining the target compute resource to use. Default: local")
+    parser.add_argument("-l", "--logfile", default="runner.log",
+                        help="log file path ")
     parser.add_argument("-p", "--pickle", action='store_true', default=False, 
                         help="Output data in pickled format. Default: False")
     args = parser.parse_args()
@@ -83,6 +115,8 @@ if __name__ == "__main__":
     #for smile_dir in glob.glob(args.smile_dir):
     #    print(smile_dir)
     #exit(0)
+
+    logger = set_file_logger(args.logfile)
 
     if args.config == "local":
         from parsl.configs.htex_local import config
@@ -108,28 +142,26 @@ if __name__ == "__main__":
 
     os.makedirs(args.outdir, exist_ok=True)
 
-    print("Computing fingerprints for all {} targets".format(len(target_smiles)))
+    logger.info("Computing fingerprints for all {} targets".format(len(target_smiles)))
     targets = {}
     bit_target = None
     for smile in target_smiles:
         bit_target = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048)
         targets[smile] = bit_target
 
-    print("Targets computed")
-    print(targets)
+    logger.info("Targets computed")
+    logger.info(f"Targets : {targets}")
 
     all_pickle_files = glob.glob(args.smile_glob)
     batch_futures = {}
     counter = 0
 
-    target_smile = 'O=C(Nc1cccc(c1)S(=O)(=O)N1CCCCC1)CN1Cc2c(C1)cccc2'
-
     for pickle_file in all_pickle_files:
         if not pickle_file.endswith('.pkl'):
-            print(f"Ignoring {pickle_file} not smile file")
+            logger.warning(f"Ignoring {pickle_file} not smile file")
             continue
 
-        print("Processing pickle_file: {} {}/{}".format(pickle_file, counter, len(all_pickle_files)))
+        logger.info("Processing pickle_file: {} {}/{}".format(pickle_file, counter, len(all_pickle_files)))
 
 
         #outdir = "{}/{}".format(args.outdir, os.path.basename(pickle_file))
@@ -139,12 +171,12 @@ if __name__ == "__main__":
 
         x = process_one_target(pickle_file,
                                targets,
-                               N = 100)
+                               N = int(args.top_n))
         batch_futures[pickle_file] = x
         counter += 1
 
     # Waiting for all futures
-    print("Waiting for all futures from {}".format(pickle_file))
+    logger.info("Waiting for all futures from {}".format(pickle_file))
 
     all_results = {smile: [] for smile in targets}
     for pkl_file in batch_futures:
@@ -153,11 +185,18 @@ if __name__ == "__main__":
             x = i.result()
             for smile in x:
                 all_results[smile].extend(x[smile])
-            print(x)
+            logger.debug(f"Results from {smile} : {x}")
         except Exception as e:
+            logger.exception(f"Computing on {pkl_file} failed")
             print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
-            print(f"Computing on {pkl_file} failed")
-    print(f"Completed {pickle_file}")    
+
+    logger.info(f"Completed {pickle_file}")    
+
+    logger.info("Post processing results")
+    for smile in all_results:
+        logger.info(f"Processing result for target : {smile}")
+        sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)
+        logger.info("Top {} : {}".format(args.top_n, sorted_scores[:int(args.top_n)]))
 
     print("All done!")
 
