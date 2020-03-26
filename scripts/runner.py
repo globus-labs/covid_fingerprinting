@@ -42,7 +42,7 @@ def set_file_logger(filename: str, name: str = 'runner', level: int = logging.DE
 
 
 @parsl.python_app
-def process_one_target(file, targets, N):
+def process_old_target(file, targets, N):
     import rdkit
     import base64
     from rdkit import RDLogger
@@ -74,6 +74,54 @@ def process_one_target(file, targets, N):
             except:
                 bv = None
             fingerprint_set += [(sm, bv)]
+            
+        # Find scores for non-None fingerprints in fingerprint set
+        scores = []
+        for (smile, fingerprint) in fingerprint_set:
+            try:
+                score = DataStructs.TanimotoSimilarity(fingerprint, bit_target)
+                scores += [(smile, score)]
+            except:
+                pass
+
+        sorted_scores = sorted(scores, key=itemgetter(1))
+        new_list = sorted_scores[-N:]
+        target_results[smile_target] = new_list
+
+    return(target_results)
+
+@parsl.python_app
+def process_one_target(file, targets, N):
+    import rdkit
+    import base64
+    from rdkit import RDLogger
+    from rdkit import DataStructs
+    from pstats import SortKey
+    import pickle
+    from operator import itemgetter
+    import csv
+    
+
+    target_results = {}
+
+    if file.endswith('pkl'):
+        read = pickle.load( open(file, 'rb') )
+    else:
+        with open(file, 'r') as f:
+            reader = csv.reader(f)
+            read = list(map(tuple, reader))
+    fingerprint_set = []
+    for sm, _, fp in read:
+        # Next TRY here as some do not convert
+        try:
+            bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
+        except:
+            bv = None
+        fingerprint_set += [(sm, bv)]
+
+    for smile_target in targets:
+        best_so_far = [('', 0.0) for index in range(N)]
+        bit_target = targets[smile_target]
             
         # Find scores for non-None fingerprints in fingerprint set
         scores = []
@@ -125,6 +173,8 @@ if __name__ == "__main__":
         config.executors[0].max_workers = 1
     elif args.config == "theta":
         from theta import config
+    elif args.config == "frontera":
+        from frontera import config
     elif args.config == "theta_test":
         from theta_test import config
     elif args.config == "comet":
