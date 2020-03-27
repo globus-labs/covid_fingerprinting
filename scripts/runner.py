@@ -8,6 +8,7 @@ import argparse
 import traceback
 import parsl
 import pickle
+from itertools import islice
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from operator import itemgetter
@@ -146,6 +147,8 @@ if __name__ == "__main__":
                         help="Print Endpoint version information")
     parser.add_argument("-d", "--debug", action='store_true',
                         help="Enables debug logging")
+    parser.add_argument("-n", "--name", required=True,
+                        help="Name to use in csv")
     parser.add_argument("-s", "--smile_glob", default=".",
                         help="Glob pattern that points to all .smi smile files")
     parser.add_argument("-t", "--top_n", default="100",
@@ -200,56 +203,62 @@ if __name__ == "__main__":
         targets[smile] = bit_target
 
     logger.info("Targets computed")
-    logger.info(f"Targets : {targets}")
 
     all_pickle_files = glob.glob(args.smile_glob)
     batch_futures = {}
     counter = 0
 
-    for pickle_file in all_pickle_files:
-        if not pickle_file.endswith('.pkl'):
-            logger.warning(f"Ignoring {pickle_file} not smile file")
-            continue
+    csv_file_handle = open(args.logfile.replace('.log', '.csv'), 'x')
+        
+    for i in range(0,len(targets),100):
 
-        logger.info("Processing pickle_file: {} {}/{}".format(pickle_file, counter, len(all_pickle_files)))
+        target_subset = {key:targets[key]  for key in islice(targets.keys(), i, i+100)}
 
+        target_futures = []
+        for pickle_file in all_pickle_files:
+            if not pickle_file.endswith('.pkl'):
+                logger.warning(f"Ignoring {pickle_file} not smile file")
+                continue
 
-        #outdir = "{}/{}".format(args.outdir, os.path.basename(pickle_file))
-        #os.makedirs(outdir, exist_ok=True)
-        #os.makedirs(outdir + '/logs' , exist_ok=True)
+            logger.info("Processing pickle_file: {} Target:{}-{}".format(pickle_file, 
+                                                                         i,
+                                                                         i+100))
 
+            x = process_one_target(pickle_file,
+                                   target_subset,
+                                   N = int(args.top_n))
+            target_futures.append(x)
 
-        x = process_one_target(pickle_file,
-                               targets,
-                               N = int(args.top_n))
-        batch_futures[pickle_file] = x
-        counter += 1
+        # Wait for all futures
 
-    # Waiting for all futures
-    logger.info("Waiting for all futures from {}".format(pickle_file))
+        logger.info(f"Waiting for all futures from target_subset {i}-{i+100}")
 
-    all_results = {smile: [] for smile in targets}
-    count = 0
-    for pkl_file in batch_futures:
-        i = batch_futures[pkl_file]
-        logger.debug("Waiting on {}/{} of futures".format(count, len(batch_futures)))
-        count+=1
-        try:
-            x = i.result()
-            for smile in x:
-                all_results[smile].extend(x[smile])
-            logger.debug(f"Results from {pkl_file} : {x}")
-        except Exception as e:
-            logger.exception(f"Computing on {pkl_file} failed")
-            print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
+        all_results = {smile: [] for smile in targets}
 
-    logger.info(f"Completed {pickle_file}")    
+        count = 0    
+        for fu in target_futures:
+            logger.debug("Waiting on {}/{} of futures".format(count, len(target_futures)))
+            count+=1
+            try:
+                x = fu.result()
+                for smile in x:
+                    all_results[smile].extend(x[smile])
+                
+            except Exception as e:
+                logger.exception(f"Computing on {pkl_file} failed")
+                print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
+        print("{} - {} done".format(i, i+100))
 
-    logger.info("Post processing results")
-    for smile in all_results:
-        logger.info(f"Processing result for target : {smile}")
-        sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)
-        logger.info("Top {} : {}".format(args.top_n, sorted_scores[:int(args.top_n)]))
-
+        for smile in all_results:
+            logger.info(f"Collating result for target : {smile}")
+            sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)[:int(args.top_n)]
+            logger.info("Top {} : {}".format(args.top_n, sorted_scores))
+            for match, score,  in sorted_scores:
+                print("{},{},{},{}".format(args.name,
+                                           '%.6f'%score,
+                                           smile,
+                                           match), file=csv_file_handle)
+        #break
+                                               
     print("All done!")
 
