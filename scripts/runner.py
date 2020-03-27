@@ -8,6 +8,7 @@ import argparse
 import traceback
 import parsl
 import pickle
+import gc
 from itertools import islice
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -92,7 +93,7 @@ def process_old_target(file, targets, N):
     return(target_results)
 
 @parsl.python_app
-def process_one_target(file, targets, N):
+def process_one_target(file, targets, N, outfile=None):
     import rdkit
     import base64
     from rdkit import RDLogger
@@ -137,8 +138,74 @@ def process_one_target(file, targets, N):
         new_list = sorted_scores[-N:]
         target_results[smile_target] = new_list
 
-    return(target_results)
+    if outfile:
+        with open(outfile, 'wb') as f:
+            pickle.dump(target_results, f)
+        return outfile
+    else:
+        return(target_results)
 
+
+def launch_slice(all_pickle_files, target_subset, csv_file_handle, index):
+
+    target_futures = []
+
+    count  = 0
+    for pickle_file in all_pickle_files:
+        count += 1 
+        if not pickle_file.endswith('.pkl'):
+            logger.warning(f"Ignoring {pickle_file} not smile file")
+            continue
+
+        logger.info("Processing pickle_file: {} Target:{}-{}".format(pickle_file, 
+                                                                     index,
+                                                                     index+100))
+        outfile =  "{}/{}.{}-{}.pkl".format(args.outdir, 
+                                            os.path.basename(pickle_file),
+                                            index, 
+                                            index+100)
+                                  
+        x = process_one_target(pickle_file,
+                               target_subset,
+                               N = int(args.top_n),
+                               outfile=outfile
+                           )
+        target_futures.append(x)
+
+        # Wait for all futures
+
+        logger.info(f"Waiting for all futures from target_subset {index}-{index+100}")
+
+        all_results = {smile: [] for smile in targets}
+
+    count = 0
+    for fu in target_futures:
+        logger.debug("Waiting on {}/{} of futures".format(count, len(target_futures)))
+        count+=1
+        try:
+            x = fu.result()
+            
+            #for smile in x:
+            #    all_results[smile].extend(x[smile])
+                
+        except Exception as e:
+            logger.exception(f"Computing failed")
+            print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
+    print("{} - {} done".format(i, i+100))
+
+    """
+    for smile in all_results:
+        logger.info(f"Collating result for target : {smile}")
+        sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)[:int(args.top_n)]
+        logger.info("Top {} : {}".format(args.top_n, sorted_scores))
+        for match, score,  in sorted_scores:
+            print("{},{},{},{}".format(args.name,
+                                       '%.6f'%score,
+                                       smile,
+                                       match), file=csv_file_handle)
+        csv_file_handle.flush()
+    """
+    return [fu.result() for fu in target_futures]
 
 if __name__ == "__main__":
 
@@ -208,57 +275,25 @@ if __name__ == "__main__":
     batch_futures = {}
     counter = 0
 
-    csv_file_handle = open(args.logfile.replace('.log', '.csv'), 'x')
+    csv_file_handle = open(args.logfile.replace('.log', '.csv'), 'w')
         
+    """
+    all_outfiles = []
     for i in range(0,len(targets),100):
-
+    
         target_subset = {key:targets[key]  for key in islice(targets.keys(), i, i+100)}
-
         target_futures = []
-        for pickle_file in all_pickle_files:
-            if not pickle_file.endswith('.pkl'):
-                logger.warning(f"Ignoring {pickle_file} not smile file")
-                continue
-
-            logger.info("Processing pickle_file: {} Target:{}-{}".format(pickle_file, 
-                                                                         i,
-                                                                         i+100))
-
-            x = process_one_target(pickle_file,
-                                   target_subset,
-                                   N = int(args.top_n))
-            target_futures.append(x)
-
-        # Wait for all futures
-
-        logger.info(f"Waiting for all futures from target_subset {i}-{i+100}")
-
-        all_results = {smile: [] for smile in targets}
-
-        count = 0    
-        for fu in target_futures:
-            logger.debug("Waiting on {}/{} of futures".format(count, len(target_futures)))
-            count+=1
-            try:
-                x = fu.result()
-                for smile in x:
-                    all_results[smile].extend(x[smile])
-                
-            except Exception as e:
-                logger.exception(f"Computing on {pkl_file} failed")
-                print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
-        print("{} - {} done".format(i, i+100))
-
-        for smile in all_results:
-            logger.info(f"Collating result for target : {smile}")
-            sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)[:int(args.top_n)]
-            logger.info("Top {} : {}".format(args.top_n, sorted_scores))
-            for match, score,  in sorted_scores:
-                print("{},{},{},{}".format(args.name,
-                                           '%.6f'%score,
-                                           smile,
-                                           match), file=csv_file_handle)
+        outfiles = launch_slice(all_pickle_files, target_subset, csv_file_handle, i)    
+        all_outfiles.extend(outfiles)
+        print("Garbage collect : ", gc.collect())
         #break
+        
+    """
+
+    outfiles = launch_slice(all_pickle_files, targets, csv_file_handle, 1000)    
+    all_outfiles.extend(outfiles)
+    print("Garbage collect : ", gc.collect())
+    #break
                                                
     print("All done!")
 
