@@ -41,10 +41,8 @@ def set_file_logger(filename: str, name: str = 'runner', level: int = logging.DE
     return logger
 
 
-
-
 @parsl.python_app
-def process_old_target(file, targets, N):
+def process_one_target(file, targets, top_n_matches, outfile=None):
     import rdkit
     import base64
     from rdkit import RDLogger
@@ -54,56 +52,6 @@ def process_old_target(file, targets, N):
     from operator import itemgetter
     import csv
     
-
-    target_results = {}
-
-    for smile_target in targets:
-        best_so_far = [('', 0.0) for index in range(N)]
-        bit_target = targets[smile_target]
-
-        if file.endswith('pkl'):
-            read = pickle.load( open(file, 'rb') )
-        else:
-            with open(file, 'r') as f:
-                reader = csv.reader(f)
-                read = list(map(tuple, reader))
-
-        fingerprint_set = []
-        for sm, _, fp in read:
-            # Next TRY here as some do not convert
-            try:
-                bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
-            except:
-                bv = None
-            fingerprint_set += [(sm, bv)]
-            
-        # Find scores for non-None fingerprints in fingerprint set
-        scores = []
-        for (smile, fingerprint) in fingerprint_set:
-            try:
-                score = DataStructs.TanimotoSimilarity(fingerprint, bit_target)
-                scores += [(smile, score)]
-            except:
-                pass
-
-        sorted_scores = sorted(scores, key=itemgetter(1))
-        new_list = sorted_scores[-N:]
-        target_results[smile_target] = new_list
-
-    return(target_results)
-
-@parsl.python_app
-def process_one_target(file, targets, N, outfile=None):
-    import rdkit
-    import base64
-    from rdkit import RDLogger
-    from rdkit import DataStructs
-    from pstats import SortKey
-    import pickle
-    from operator import itemgetter
-    import csv
-    
-
     target_results = {}
 
     if file.endswith('pkl'):
@@ -122,7 +70,7 @@ def process_one_target(file, targets, N, outfile=None):
         fingerprint_set += [(sm, bv)]
 
     for smile_target in targets:
-        best_so_far = [('', 0.0) for index in range(N)]
+        best_so_far = [('', 0.0) for index in range(top_n_matches)]
         bit_target = targets[smile_target]
             
         # Find scores for non-None fingerprints in fingerprint set
@@ -135,7 +83,7 @@ def process_one_target(file, targets, N, outfile=None):
                 pass
 
         sorted_scores = sorted(scores, key=itemgetter(1))
-        new_list = sorted_scores[-N:]
+        new_list = sorted_scores[-top_n_matches:]
         target_results[smile_target] = new_list
 
     if outfile:
@@ -146,7 +94,7 @@ def process_one_target(file, targets, N, outfile=None):
         return(target_results)
 
 
-def launch_slice(all_pickle_files, target_subset, csv_file_handle, index):
+def launch_slice(all_pickle_files, target_subset, prefix, wait=True):
 
     target_futures = []
 
@@ -157,55 +105,35 @@ def launch_slice(all_pickle_files, target_subset, csv_file_handle, index):
             logger.warning(f"Ignoring {pickle_file} not smile file")
             continue
 
-        logger.info("Processing pickle_file: {} Target:{}-{}".format(pickle_file, 
-                                                                     index,
-                                                                     index+100))
-        outfile =  "{}/{}.{}-{}.pkl".format(args.outdir, 
-                                            os.path.basename(pickle_file),
-                                            index, 
-                                            index+100)
-                                  
+        logger.info("Processing pickle_file: {} Target:{}".format(pickle_file, 
+                                                                  prefix))
+
+        outfile =  "{}/{}.{}.pkl".format(args.outdir, 
+                                         os.path.basename(pickle_file).strip('.pkl'),
+                                         prefix)                                  
+        if os.path.exists(outfile) and os.stat(outfile).st_size > 0:
+            logger.debug(f"{outfile} already exists")
+            continue
+
         x = process_one_target(pickle_file,
                                target_subset,
-                               N = int(args.top_n),
+                               top_n_matches = int(args.top_n_matches),
                                outfile=outfile
                            )
         target_futures.append(x)
-
         # Wait for all futures
-
-        logger.info(f"Waiting for all futures from target_subset {index}-{index+100}")
-
-        all_results = {smile: [] for smile in targets}
+        logger.info(f"Waiting for all futures for {prefix}")
 
     count = 0
-    for fu in target_futures:
-        logger.debug("Waiting on {}/{} of futures".format(count, len(target_futures)))
-        count+=1
-        try:
-            x = fu.result()
-            
-            #for smile in x:
-            #    all_results[smile].extend(x[smile])
-                
-        except Exception as e:
-            logger.exception(f"Computing failed")
-            print("Exception : {} Traceback : {}".format(e, traceback.format_exc()))
-    print("{} - {} done".format(i, i+100))
+    
+    if wait is True:
+        outfiles = [fu.result() for fu in target_futures]
+        print(f"Output files : {outfiles}")
+        print(f"{prefix} done")
+    else:
+        outfiles = target_futures
 
-    """
-    for smile in all_results:
-        logger.info(f"Collating result for target : {smile}")
-        sorted_scores = sorted(all_results[smile], key=itemgetter(1), reverse=True)[:int(args.top_n)]
-        logger.info("Top {} : {}".format(args.top_n, sorted_scores))
-        for match, score,  in sorted_scores:
-            print("{},{},{},{}".format(args.name,
-                                       '%.6f'%score,
-                                       smile,
-                                       match), file=csv_file_handle)
-        csv_file_handle.flush()
-    """
-    return [fu.result() for fu in target_futures]
+    return outfiles
 
 if __name__ == "__main__":
 
@@ -218,8 +146,16 @@ if __name__ == "__main__":
                         help="Name to use in csv")
     parser.add_argument("-s", "--smile_glob", default=".",
                         help="Glob pattern that points to all .smi smile files")
-    parser.add_argument("-t", "--top_n", default="100",
-                        help="Top N items to report, default  = 100")
+
+    parser.add_argument("--target_glob", required=True,
+                        help="Target glob")
+    
+    parser.add_argument("--top_n_targets", default="1000",
+                        help="Top N items to take from the target source csv file")
+
+    parser.add_argument("--top_n_matches", default="100",
+                        help="Top N matches to the target to calculate")
+
     parser.add_argument("-o", "--outdir", default="outputs",
                         help="Output directory. Default : outputs")
     parser.add_argument("-c", "--config", default="local",
@@ -239,12 +175,14 @@ if __name__ == "__main__":
     if args.config == "local":
         from parsl.configs.htex_local import config
         from parsl.configs.htex_local import config
-        config.executors[0].label = "Foo"
-        config.executors[0].max_workers = 1
+        config.executors[0].label = "Login"
+        config.executors[0].max_workers = 4
     elif args.config == "theta":
         from theta import config
     elif args.config == "frontera":
         from frontera import config
+    elif args.config == "frontera_small":
+        from frontera_small import config
     elif args.config == "theta_test":
         from theta_test import config
     elif args.config == "comet":
@@ -253,47 +191,58 @@ if __name__ == "__main__":
     # Most of the app that hit the timeout will complete if retried.
     # but for this demo, I'm not setting retries.
     # config.retries = 2
+    # print("*"*10, "Skip loading config", "*"*10)
     parsl.load(config)
 
 
     if args.debug:
         parsl.set_stream_logger()
 
+    all_targets = {}
+    for target_file in glob.glob(args.target_glob):        
+        target_smiles = None
+        target_name = os.path.basename(target_file).strip('_dock.csv').strip('top.7.5k.ml.')
+        print("Target name : ", target_name)
 
-    os.makedirs(args.outdir, exist_ok=True)
+        all_targets[target_name] = {}
 
-    logger.info("Computing fingerprints for all {} targets".format(len(target_smiles)))
-    targets = {}
-    bit_target = None
-    for smile in target_smiles:
-        bit_target = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048)
-        targets[smile] = bit_target
+        with open(target_file) as f:
+            smiles = f.readlines()[:int(args.top_n_targets)]
+            target_smiles = [smile.strip().split(',')[-1] for smile in smiles]
+
+            for smile in target_smiles:
+                bit_target = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048)
+                all_targets[target_name][smile] = bit_target
 
     logger.info("Targets computed")
 
-    all_pickle_files = glob.glob(args.smile_glob)
-    batch_futures = {}
-    counter = 0
+    for source in all_targets:
+        print(all_targets[source])
+        print("Processing {}.count_{}.{}".format(args.name,
+                                                 len(all_targets[source]),
+                                                 source))
+    # exit()
 
-    csv_file_handle = open(args.logfile.replace('.log', '.csv'), 'w')
-        
-    """
+    os.makedirs(args.outdir, exist_ok=True)
+
+    all_pickle_files = glob.glob(args.smile_glob)
+
     all_outfiles = []
-    for i in range(0,len(targets),100):
-    
-        target_subset = {key:targets[key]  for key in islice(targets.keys(), i, i+100)}
-        target_futures = []
-        outfiles = launch_slice(all_pickle_files, target_subset, csv_file_handle, i)    
+    wait = False
+    for target_name in all_targets:
+        print("Launching against {}".format(target_name))
+        outfiles = launch_slice(all_pickle_files, all_targets[target_name], prefix=target_name, wait=wait)                    
         all_outfiles.extend(outfiles)
         print("Garbage collect : ", gc.collect())
         #break
-        
-    """
 
-    outfiles = launch_slice(all_pickle_files, targets, csv_file_handle, 1000)    
-    all_outfiles.extend(outfiles)
-    print("Garbage collect : ", gc.collect())
-    #break
-                                               
+
+    for fu in all_outfiles:
+        if wait is False:
+            outfile = fu.result()
+        else:
+            outfile = fu
+        print("Outfile : {}".format(outfile))
+    
     print("All done!")
 
