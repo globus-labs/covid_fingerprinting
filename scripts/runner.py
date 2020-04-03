@@ -54,20 +54,16 @@ def process_one_target(file, targets, top_n_matches, outfile=None):
     
     target_results = {}
 
-    if file.endswith('pkl'):
-        read = pickle.load( open(file, 'rb') )
-    else:
-        with open(file, 'r') as f:
-            reader = csv.reader(f)
-            read = list(map(tuple, reader))
+    read = pickle.load( open(file, 'rb') )
+
     fingerprint_set = []
-    for sm, _, fp in read:
+    for sm, identifier, fp in read:
         # Next TRY here as some do not convert
         try:
             bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
         except:
             bv = None
-        fingerprint_set += [(sm, bv)]
+        fingerprint_set += [(sm, bv, identifier)]
 
     for smile_target in targets:
         best_so_far = [('', 0.0) for index in range(top_n_matches)]
@@ -75,10 +71,10 @@ def process_one_target(file, targets, top_n_matches, outfile=None):
             
         # Find scores for non-None fingerprints in fingerprint set
         scores = []
-        for (smile, fingerprint) in fingerprint_set:
+        for (smile, fingerprint, identifier) in fingerprint_set:
             try:
                 score = DataStructs.TanimotoSimilarity(fingerprint, bit_target)
-                scores += [(smile, score)]
+                scores += [(smile, score, identifier)]
             except:
                 pass
 
@@ -176,7 +172,7 @@ if __name__ == "__main__":
         from parsl.configs.htex_local import config
         from parsl.configs.htex_local import config
         config.executors[0].label = "Login"
-        config.executors[0].max_workers = 4
+        # config.executors[0].max_workers = 4
     elif args.config == "theta":
         from theta import config
     elif args.config == "frontera":
@@ -211,9 +207,13 @@ if __name__ == "__main__":
             target_smiles = [smile.strip().split(',')[-1] for smile in smiles]
 
             for smile in target_smiles:
-                bit_target = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048)
-                all_targets[target_name][smile] = bit_target
-
+                try:
+                    bit_target = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smile), 2, nBits=2048)
+                    all_targets[target_name][smile] = bit_target
+                except Exception as e:
+                    logger.exception(f"Caught error processing {smile}")
+                    print(f"{smile} failed to compute fingerprint")
+                        
     logger.info("Targets computed")
 
     for source in all_targets:
@@ -238,8 +238,12 @@ if __name__ == "__main__":
 
 
     for fu in all_outfiles:
+        outfile = None
         if wait is False:
-            outfile = fu.result()
+            try:
+                outfile = fu.result()
+            except:
+                pass
         else:
             outfile = fu
         print("Outfile : {}".format(outfile))
