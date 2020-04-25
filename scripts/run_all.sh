@@ -1,14 +1,47 @@
+#!/bin/bash
 
-TOP_N=100
-LOGSUFFIX="March_30_${TOP_N}_targets_top_100_similarity"
+set -x
+TOP_N=50
+LOGSUFFIX="V3.April_9_all_targets_top_50_similarity"
 echo $LOGSUFFIX
 
 #TARGET_GLOB="./targets/*csv"
 # TARGET_GLOB="./March_30/ml.ADRP-ADPR_pocket1_dock.csv.top10k.csv"
 # TARGET_GLOB="adrp_aps_leads.csv"
-TARGET_GLOB="./March_30/*.csv"
+# TARGET_GLOB="./DrugBank_sliced/*.csv"
+TARGET_GLOB="./V3.April_9/*top50"
 
-cat <<EOF
+for i in $(ls /scratch1/02551/yadunand/ScreenPilot/Fingerprints/fingerprints)
+do 
+    source=$i
+    source_path="/scratch1/02551/yadunand/ScreenPilot/Fingerprints/fingerprints/$source/*pkl"
+    
+    python3 runner.py -s "$source_path" \
+	-l $source_$LOGSUFFIX.log \
+	-n $source \
+	-o $PWD/$source \
+	--target_glob="$TARGET_GLOB" \
+	--top_n_targets=$TOP_N \
+	--top_n_matches=100 \
+	-c frontera_small
+
+    ls -thor $PWD/$source | mail -s "[Frontera] $source done" yadudoc1729@gmail.com
+done
+
+mail -s "[Frontera] All done" yadudoc1729@gmail.com
+
+exit 0
+python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/DrugBank/*pkl" \
+    -l DrugBank_$LOGSUFFIX.log \
+    -n DrugBank \
+    -o $PWD/DrugBank \
+    --target_glob="$TARGET_GLOB" \
+    --top_n_targets=$TOP_N \
+    -c frontera_small
+
+ls -thor $PWD/DrugBank | mail -s "DrugBank done" yadudoc1729@gmail.com
+
+
 python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/Enamine_REAL_diversity_set_15.5M.smi/*pkl" \
     -l enamine_diversity_$LOGSUFFIX.log \
     -n enamine_diversity \
@@ -19,7 +52,6 @@ python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/Enamine_
 
 ls -thor $PWD/enamine_diversity | mail -s "Enamine_diversity done" yadudoc1729@gmail.com
 
-
 python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/pubchem*/*pkl" \
     -l pubchem_$LOGSUFFIX.log \
     -n pubchem \
@@ -29,7 +61,6 @@ python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/pubchem*
     -c frontera_small
 
 ls -thor $PWD/pubchem | mail -s "Pubchem done" yadudoc1729@gmail.com
-
 
 
 python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/SureChEMBL-64/*/*.pkl" \
@@ -48,10 +79,9 @@ python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Fingerprints/GDB-13-6
     -o $PWD/GDB13 \
     --target_glob="$TARGET_GLOB" \
     --top_n_targets=$TOP_N \
-    -c frontera
+    -c frontera_small
 
 ls -thor $PWD/GDB13 | mail -s "GDB13 done" yadudoc1729@gmail.com
-EOF
 
 python3 runner.py -s "/scratch1/02551/yadunand/ScreenPilot/Enamine_Real_Fingerprints/*/*" \
     -l Enamine_Real_$LOGSUFFIX.log \
@@ -73,6 +103,9 @@ python3 runner.py -s "/home1/02551/yadunand/ScreenPilot/Fingerprints/ZINC15/*/*p
 
 ls -thor $PWD/pubchem | mail -s "ZINC15 done" yadudoc1729@gmail.com
 
+python3 combiner.py -t DrugBank_sliced/ --top_n_matches=10
+
+ls -thor drugbank/*/ | mail -s "Combiner done" yadudoc1729@gmail.com
 
 exit 0
 

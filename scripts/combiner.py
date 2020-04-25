@@ -44,18 +44,31 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     #outdir="top_100_similar_1000_targets"
-    outdir = "/home1/02551/yadunand/ScreenPilot/covid_fingerprinting/scripts/Similarity_March_30_High_Priority/top_1000_similar_100_targets"
+    # outdir = "/home1/02551/yadunand/ScreenPilot/covid_fingerprinting/scripts/drugbank/all_targets_similar_10_matches"
+    outdir = "test_out"
     os.makedirs(outdir, exist_ok=True)
 
 
-    for source in ['enamine_diversity', 'ZINC15', 'SureChEMBL', 'pubchem', 'GDB13', 'Enamine_Real']:    
-        #for target in ['query_single']:
+    print(args.input_dir)
+    # for source in ['enamine_diversity', 'ZINC15', 'SureChEMBL', 'pubchem', 'GDB13', 'Enamine_Real']:    
+    for source in os.listdir(args.input_dir):
+        #print("Source : ", source)
+        targets = [f.strip('.csv') for f in glob.glob(args.target_dir)]
+        #print("Target : ", targets)
         # for target in ['3CLPro_pocket1', 'ADRP_pocket1', 'CoV_pocket1', 'PLPro_pocket3']:
-        targets = [t.strip('ml.').rsplit('_', 1)[0] for t in os.listdir(args.target_dir)]
+        #targets = [t.strip('ml.').rsplit('_', 1)[0] for t in os.listdir(args.target_dir)]
         for target in targets:
-            files = glob.glob(f"{args.input_dir}/{source}/*{target}*.pkl")
-            print(f"Starting {source} for target:{target}") 
-            combine(files, source, 
-                    output=f"{outdir}/{source}_{target}_1000_targets_top_100_similar.top_100.csv",
-                    top_n_matches=int(args.top_n_matches))
+            base_target = os.path.basename(target)
+            # print("Searching for : ", f"{args.input_dir}/{source}/*{base_target}*.pkl")
+            files = glob.glob(f"{args.input_dir}/{source}/*{base_target}*.pkl")
+            # print("Source files : ", files)
+            output=f"{outdir}/{source}/{base_target}_50_targets_top_100_similar.csv"
 
+            print(f"Starting {source} for target:{target} at ${output}") 
+            
+            os.makedirs(os.path.dirname(output), exist_ok=True)
+            combine(files, source, 
+                    output=f"{outdir}/{source}_{target}_50_targets_top_100_similar.csv",
+                    top_n_matches=int(args.top_n_matches))
+            #break
+        #break

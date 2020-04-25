@@ -62,7 +62,7 @@ def process_one_target(file, targets, top_n_matches, outfile=None):
         try:
             bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
         except:
-            bv = None
+            bv = fp
         fingerprint_set += [(sm, bv, identifier)]
 
     for smile_target in targets:
@@ -190,15 +190,16 @@ if __name__ == "__main__":
     # print("*"*10, "Skip loading config", "*"*10)
     parsl.load(config)
 
-
     if args.debug:
         parsl.set_stream_logger()
 
     all_targets = {}
     for target_file in glob.glob(args.target_glob):        
         target_smiles = None
-        target_name = os.path.basename(target_file).strip('_dock.csv').strip('top.7.5k.ml.')
-        print("Target name : ", target_name)
+        #target_name = os.path.basename(target_file).strip('_dock.csv').strip('top.7.5k.ml.')
+        target_name = os.path.basename(target_file).strip('.csv')
+
+        logger.info("From target file: {} Target name : {} ".format(target_file,target_name))
 
         all_targets[target_name] = {}
 
@@ -221,7 +222,6 @@ if __name__ == "__main__":
         print("Processing {}.count_{}.{}".format(args.name,
                                                  len(all_targets[source]),
                                                  source))
-    # exit()
 
     os.makedirs(args.outdir, exist_ok=True)
 
