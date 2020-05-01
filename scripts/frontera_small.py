@@ -21,7 +21,7 @@ config = Config(
                 walltime='02:00:00',
                 partition='development',                                 # Replace with partition name
 
-                init_blocks=3,
+                init_blocks=1,
                 min_blocks=1,
                 max_blocks=3,
 
@@ -34,5 +34,5 @@ config = Config(
             ),
         )
     ],
-    strategy=None,
+    strategy='simple',
 )

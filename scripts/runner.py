@@ -230,6 +230,7 @@ if __name__ == "__main__":
     all_outfiles = []
     wait = False
     for target_name in all_targets:
+        
         print("Launching against {}".format(target_name))
         outfiles = launch_slice(all_pickle_files, all_targets[target_name], prefix=target_name, wait=wait)                    
         all_outfiles.extend(outfiles)
