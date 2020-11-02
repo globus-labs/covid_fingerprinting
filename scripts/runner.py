@@ -54,10 +54,13 @@ def process_one_target(file, targets, top_n_matches, outfile=None):
     
     target_results = {}
 
-    read = pickle.load( open(file, 'rb') )
+    if file.endswith('.csv'):
+        read = [line.split(',') for line in open(file, 'r').readlines()]
+    else:
+        read = pickle.load( open(file, 'rb') )
 
     fingerprint_set = []
-    for sm, identifier, fp in read:
+    for dataset_name, sm, identifier, fp in read:
         # Next TRY here as some do not convert
         try:
             bv = DataStructs.ExplicitBitVect(base64.b64decode(fp))
@@ -90,28 +93,26 @@ def process_one_target(file, targets, top_n_matches, outfile=None):
         return(target_results)
 
 
-def launch_slice(all_pickle_files, target_subset, prefix, wait=True):
+def launch_slice(all_dataset_files, target_subset, prefix, wait=True):
 
     target_futures = []
 
     count  = 0
-    for pickle_file in all_pickle_files:
+    for dataset_file in all_dataset_files:
+        print("Dataset file : ", dataset_file)
         count += 1 
-        if not pickle_file.endswith('.pkl'):
-            logger.warning(f"Ignoring {pickle_file} not smile file")
-            continue
 
-        logger.info("Processing pickle_file: {} Target:{}".format(pickle_file, 
-                                                                  prefix))
+        logger.info("Processing dataset_file: {} Target:{}".format(dataset_file, 
+                                                                   prefix))
 
         outfile =  "{}/{}.{}.pkl".format(args.outdir, 
-                                         os.path.basename(pickle_file).strip('.pkl'),
+                                         os.path.basename(dataset_file).strip('.csv'),
                                          prefix)                                  
         if os.path.exists(outfile) and os.stat(outfile).st_size > 0:
             logger.debug(f"{outfile} already exists")
             continue
 
-        x = process_one_target(pickle_file,
+        x = process_one_target(dataset_file,
                                target_subset,
                                top_n_matches = int(args.top_n_matches),
                                outfile=outfile
@@ -138,10 +139,9 @@ if __name__ == "__main__":
                         help="Print Endpoint version information")
     parser.add_argument("-d", "--debug", action='store_true',
                         help="Enables debug logging")
-    parser.add_argument("-n", "--name", required=True,
-                        help="Name to use in csv")
-    parser.add_argument("-s", "--smile_glob", default=".",
-                        help="Glob pattern that points to all .smi smile files")
+
+    parser.add_argument("--dataset_glob", default=".",
+                        help="Glob pattern that points to all precomputed fingerprint csv  files")
 
     parser.add_argument("--target_glob", required=True,
                         help="Target glob")
@@ -217,22 +217,23 @@ if __name__ == "__main__":
                         
     logger.info("Targets computed")
 
+    """
     for source in all_targets:
         print(all_targets[source])
         print("Processing {}.count_{}.{}".format(args.name,
                                                  len(all_targets[source]),
                                                  source))
-
+    """
     os.makedirs(args.outdir, exist_ok=True)
 
-    all_pickle_files = glob.glob(args.smile_glob)
+    all_dataset_files = glob.glob(args.dataset_glob)
 
     all_outfiles = []
-    wait = False
+    wait = True
     for target_name in all_targets:
         
         print("Launching against {}".format(target_name))
-        outfiles = launch_slice(all_pickle_files, all_targets[target_name], prefix=target_name, wait=wait)                    
+        outfiles = launch_slice(all_dataset_files, all_targets[target_name], prefix=target_name, wait=wait)                    
         all_outfiles.extend(outfiles)
         print("Garbage collect : ", gc.collect())
         #break
